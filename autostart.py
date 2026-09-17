@@ -10,11 +10,29 @@ import platform
 CURRENT_OS = platform.system()
 
 
+def _get_app_info():
+    """アプリケーションパスおよびPython実行パスを取得"""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    py_exe = sys.executable
+    main_script = os.path.join(app_dir, "main.py")
+    return app_dir, py_exe, main_script
+
+
 def is_autostart_enabled() -> bool:
-    """自動起動が有効になっているか確認"""
+    """自動起動が現在のアプリパスで有効になっているか確認"""
+    app_dir, py_exe, main_script = _get_app_info()
+
     if CURRENT_OS == "Linux":
         path = os.path.expanduser("~/.config/autostart/japan-monitor.desktop")
-        return os.path.exists(path)
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            # 現在のmain_scriptパスまたはapp_dirが含まれているか検証
+            return (main_script in content or app_dir in content)
+        except Exception:
+            return False
 
     elif CURRENT_OS == "Windows":
         try:
@@ -27,13 +45,20 @@ def is_autostart_enabled() -> bool:
             )
             val, _ = winreg.QueryValueEx(key, "JmaMonitor")
             winreg.CloseKey(key)
-            return bool(val)
+            return bool(val) and (main_script in str(val) or app_dir in str(val))
         except Exception:
             return False
 
     elif CURRENT_OS == "Darwin":  # macOS
         plist_path = os.path.expanduser("~/Library/LaunchAgents/com.jma.monitor.plist")
-        return os.path.exists(plist_path)
+        if not os.path.exists(plist_path):
+            return False
+        try:
+            with open(plist_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return main_script in content
+        except Exception:
+            return False
 
     return False
 
@@ -41,9 +66,7 @@ def is_autostart_enabled() -> bool:
 def set_autostart(enabled: bool) -> bool:
     """自動起動の有効化/無効化"""
     try:
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        py_exe = sys.executable
-        main_script = os.path.join(app_dir, "main.py")
+        app_dir, py_exe, main_script = _get_app_info()
 
         if CURRENT_OS == "Linux":
             autostart_dir = os.path.expanduser("~/.config/autostart")
@@ -55,10 +78,13 @@ Type=Application
 Name=JMA Monitor
 Comment=Japan Meteorological Agency JSON Desktop Monitor
 Exec={py_exe} "{main_script}" --minimized
+Path={app_dir}
 Icon=weather-clouds
 Terminal=false
 Categories=Utility;
+StartupNotify=false
 X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=2
 """
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(desktop_content)
@@ -124,3 +150,14 @@ X-GNOME-Autostart-enabled=true
         print(f"Failed to set autostart: {e}", file=sys.stderr)
         return False
     return False
+
+
+def sync_autostart_with_config(config_autostart: bool):
+    """configの設定値と実態（.desktopやレジストリ等）の同期・修復を行う"""
+    if config_autostart:
+        # 有効設定かつパス不一致や未設定なら更新
+        if not is_autostart_enabled():
+            set_autostart(True)
+    else:
+        if is_autostart_enabled():
+            set_autostart(False)

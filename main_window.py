@@ -20,7 +20,7 @@ from monitor_service import MonitorService
 from app_theme import APP_STYLESHEET, create_status_icon
 from ui_components import BadgeLabel, WeatherCard, QuakeCard, JsonViewerWidget
 from i18n import t, get_i18n
-from autostart import is_autostart_enabled, set_autostart
+from autostart import is_autostart_enabled, set_autostart, sync_autostart_with_config
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
@@ -35,7 +35,8 @@ def load_config() -> dict:
         "notify_warning": True,
         "notify_advisory": False,
         "notify_quake": True,
-        "minimize_to_tray": True
+        "minimize_to_tray": True,
+        "autostart": False
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         # 設定の反映
         self.i18n.current_lang = self.config.get("language", "ja")
         self.current_office_code = self.config.get("office_code", "130000")
+        sync_autostart_with_config(self.config.get("autostart", False))
         poll_interval = self.config.get("polling_interval", 300)
 
         self.resize(1020, 740)
